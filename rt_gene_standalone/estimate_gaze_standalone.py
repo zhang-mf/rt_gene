@@ -33,23 +33,26 @@ def load_camera_calibration(calibration_file):
 
 def extract_eye_image_patches(subjects):
     for subject in subjects:
-        le_c, re_c, _, _ = subject.get_eye_image_from_landmarks(subject, landmark_estimator.eye_image_size)
+        le_c, re_c, _, _ = subject.get_eye_image_from_landmarks(subject, landmark_estimator.eye_image_size) # (60, 36) cv2.resize
         subject.left_eye_color = le_c
         subject.right_eye_color = re_c
 
 
 def estimate_gaze(base_name, color_img, dist_coefficients, camera_matrix):
     faceboxes = landmark_estimator.get_face_bb(color_img)
+    # faceboxes = [[0., 0., 224., 224.]]
+    print('%d faces detected.'%len(faceboxes))
     if len(faceboxes) == 0:
         tqdm.write('Could not find faces in the image')
         return
 
     subjects = landmark_estimator.get_subjects_from_faceboxes(color_img, faceboxes)
+
     extract_eye_image_patches(subjects)
 
-    input_r_list = []
-    input_l_list = []
-    input_head_list = []
+    input_r_list = [] # [3, 224, 224]
+    input_l_list = [] # [3, 224, 224]
+    input_head_list = [] # (float,float)
     valid_subject_list = []
 
     for idx, subject in enumerate(subjects):
@@ -90,7 +93,8 @@ def estimate_gaze(base_name, color_img, dist_coefficients, camera_matrix):
             plt.show()
 
         if args.save_headpose:
-            cv2.imwrite(os.path.join(args.output_path, os.path.splitext(base_name)[0] + '_headpose.jpg'), head_pose_image)
+            cv2.imwrite(os.path.join(args.output_path, os.path.splitext(base_name)[0] + '_headpose_%d.jpg'%idx), head_pose_image)
+            # cv2.imwrite(os.path.join(args.output_path, 'face_' + os.path.splitext(base_name)[0] + '_%d.jpg'%idx), face_image_resized)
 
         input_r_list.append(gaze_estimator.input_from_image(subject.right_eye_color))
         input_l_list.append(gaze_estimator.input_from_image(subject.left_eye_color))
@@ -104,9 +108,14 @@ def estimate_gaze(base_name, color_img, dist_coefficients, camera_matrix):
                                                     inference_input_right_list=input_r_list,
                                                     inference_headpose_list=input_head_list)
 
+
+
+
+
     for subject_id, gaze, headpose in zip(valid_subject_list, gaze_est.tolist(), input_head_list):
         subject = subjects[subject_id]
         # Build visualizations
+        # print(gaze) # [0.1808396279811859, -0.051273975521326065]
         r_gaze_img = gaze_estimator.visualize_eye_result(subject.right_eye_color, gaze)
         l_gaze_img = gaze_estimator.visualize_eye_result(subject.left_eye_color, gaze)
         s_gaze_img = np.concatenate((r_gaze_img, l_gaze_img), axis=1)
@@ -148,10 +157,10 @@ if __name__ == '__main__':
                         help='List of gaze estimators')
     parser.add_argument('--device-id-facedetection', dest="device_id_facedetection", type=str, default='cuda:0', help='Pytorch device id. Set to "cpu:0" to disable cuda')
 
-    parser.set_defaults(vis_gaze=True)
+    parser.set_defaults(vis_gaze=False)
     parser.set_defaults(save_gaze=True)
     parser.set_defaults(vis_headpose=False)
-    parser.set_defaults(save_headpose=True)
+    parser.set_defaults(save_headpose=False)
     parser.set_defaults(save_estimate=False)
 
     args = parser.parse_args()
@@ -168,6 +177,8 @@ if __name__ == '__main__':
     else:
         tqdm.write('Provide either a path to an image or a path to a directory containing images')
         sys.exit(1)
+
+    print(image_path_list)
 
     tqdm.write('Loading networks')
     landmark_estimator = LandmarkMethodBase(device_id_facedetection=args.device_id_facedetection,
